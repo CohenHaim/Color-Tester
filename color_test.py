@@ -4,28 +4,50 @@ import numpy as np
 def nothing(x):
     pass
 
-def circular_color_mask(image, low_h, low_s, low_v, high_h, high_s, high_v):
+def circular_color_mask(image, hsv_range):
 
-    result = image
+	result = image
+	low_h, low_s, low_v = hsv_range[0]
+	high_h, high_s, high_v = hsv_range[1]
 
-    if low_h <= high_h and low_s <= high_s and low_v <= high_v:
-        lower_boundary = np.array((low_h, low_s, low_v), dtype = "uint8")
-        upper_boundary = np.array((high_h, high_s, high_v), dtype = "uint8")
-        result = cv2.inRange(image, lower_boundary, upper_boundary)
-    else:
-        lower_boundary = np.array((low_h, low_s, low_v), dtype = "uint8")
-        upper_boundary = np.array((high_h >= low_h and high_h or 179, high_s >= low_s and high_s or 255, high_v >= low_v and high_v or 255), dtype = "uint8")
-        lower_boundary2 = np.array((low_h >= high_h and 1 or low_h, low_s >= high_s and 1 or low_s, low_v >= high_v and 1 or low_v), dtype = "uint8")
-        upper_boundary2 = np.array((high_h, high_s, high_v), dtype = "uint8")
-        result = cv2.bitwise_or(cv2.inRange(image, lower_boundary, upper_boundary), cv2.inRange(image, lower_boundary2, upper_boundary2))
+	if (hsv_range[0]<=hsv_range[1]).all():
+		lower_boundary = np.array((low_h, low_s, low_v), dtype = "uint8")
+		upper_boundary = np.array((high_h, high_s, high_v), dtype = "uint8")
+		result = cv2.inRange(image, lower_boundary, upper_boundary)
+	else:
+		lower_boundary = np.array((low_h, low_s, low_v), dtype = "uint8")
+		upper_boundary = np.array((low_h > high_h and 179 or high_h, low_s > high_s and 255 or high_s, low_v > high_v and 255 or high_v), dtype = "uint8")
+		lower_boundary2 = np.array((low_h <= high_h and low_h or 0, low_s <= high_s and low_s or 0, low_v <= high_v and low_v or 0), dtype = "uint8")
+		upper_boundary2 = np.array((high_h, high_s, high_v), dtype = "uint8")
+		result = cv2.bitwise_or(cv2.inRange(image, lower_boundary, upper_boundary), cv2.inRange(image, lower_boundary2, upper_boundary2))
 
+	return result
+
+def thresholdImage(image, args):
+    """ Performs thresholding on an image
+    Parameters
+    ----------
+    image : numpy.ndarray
+        the image to process
+    args : list
+        a list of additional arguments
+    Returns
+    --------
+        numpy.ndarray
+            the processed image
+    """
+    thresh = args[0]
+    pix = args[1]
+    algo=cv2.THRESH_BINARY
+    result = cv2.threshold(image, thresh, pix, algo)[1]
     return result
 
 
 # Create a black image, a window
-origin = cv2.imread('test.png')
-hsv = cv2.cvtColor(origin, cv2.COLOR_RGB2HSV)
-img = circular_color_mask(hsv, 50, 120, 120, 130, 255, 255)
+origin = cv2.imread('FVR.png')
+hsv = cv2.cvtColor(origin, cv2.COLOR_BGR2HSV)
+gray = cv2.cvtColor(origin, cv2.COLOR_BGR2GRAY)
+img = circular_color_mask(hsv, np.array([[50, 120, 120], [130, 255, 255]]))
 cv2.namedWindow('image')
 
 # create trackbars for color change
@@ -37,8 +59,8 @@ cv2.createTrackbar('Low-V','image',0,255,nothing)
 cv2.createTrackbar('High-V','image',0,255,nothing)
 
 # create switch for ON/OFF functionality
-switch = 'FLIP:\n0 : NONE \n1 : HUE \n2 : SATURATION \n3 : VALUE \n4 : EVERYTHING'
-cv2.createTrackbar(switch, 'image',0,4,nothing)
+switch = 'FLIP:\n0 : COLOR \n1 : THRESHOLD \n2 : REVERSE_THRESHOLD'
+cv2.createTrackbar(switch, 'image',0,2,nothing)
 
 while(1):
     cv2.imshow('image',img)
@@ -56,15 +78,13 @@ while(1):
     high_v = cv2.getTrackbarPos('High-V','image')
     flip = cv2.getTrackbarPos(switch,'image')
 
+    args = np.array([[low_h, low_s, low_v],[high_h, high_s, high_v]])
+
     if flip == 1:
-        img = circular_color_mask(hsv, high_h, low_s, low_v, low_h, high_s, high_v)
+        img = thresholdImage(gray, [low_v, high_v])
     elif flip == 2:
-        img = circular_color_mask(hsv, low_h, high_s, low_v, high_h, low_s, high_v)
-    elif flip == 3:
-        img = circular_color_mask(hsv, low_h, low_s, high_v, high_h, high_s, low_v)
-    elif flip == 4:
-        img = circular_color_mask(hsv, high_h, high_s, high_v, low_h, low_s, low_v)
+        img = cv2.bitwise_not(thresholdImage(gray, [low_v, high_v]))
     else:
-        img = circular_color_mask(hsv, low_h, low_s, low_v, high_h, high_s, high_v)
+        img = circular_color_mask(hsv, args)
 
 cv2.destroyAllWindows()
